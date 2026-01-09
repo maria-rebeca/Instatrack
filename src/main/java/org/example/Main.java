@@ -8,11 +8,31 @@ import java.sql.*;
 import java.util.HashSet;
 import java.util.Set;
 import javax.swing.SwingUtilities;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
 
 public class Main {
-    public static final String URL = "jdbc:postgresql://localhost:5432/postgres";
-    public static final String USER_DB = "postgres";
-    public static final String PASS_DB = "maria20cz";
+    public static String URL;
+    public static String USER_DB;
+    public static String PASS_DB;
+
+    static {
+        loadConfig();
+    }
+
+    private static void loadConfig() {
+        Properties prop = new Properties();
+        try (InputStream input = new FileInputStream("config.properties")) {
+            prop.load(input);
+            URL = prop.getProperty("db.url");
+            USER_DB = prop.getProperty("db.user");
+            PASS_DB = prop.getProperty("db.pass");
+        } catch (IOException ex) {
+            System.err.println("Nu s-a găsit fișierul config.properties!");
+        }
+    }
 
     public static Set<String> currentFollowers = new HashSet<>();
     public static Set<String> currentFollowing = new HashSet<>();
