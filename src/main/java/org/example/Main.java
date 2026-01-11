@@ -30,7 +30,7 @@ public class Main {
             USER_DB = prop.getProperty("db.user");
             PASS_DB = prop.getProperty("db.pass");
         } catch (IOException ex) {
-            System.err.println("Nu s-a găsit fișierul config.properties!");
+            System.err.println("Eroare config.properties!");
         }
     }
 
@@ -56,42 +56,97 @@ public class Main {
     public static boolean registerUser(String user, String pass) {
         String checkSql = "SELECT id FROM users WHERE username = ?";
         String insertSql = "INSERT INTO users (username, password_text) VALUES (?, ?)";
-
         try (Connection conn = DriverManager.getConnection(URL, USER_DB, PASS_DB)) {
             PreparedStatement checkStmt = conn.prepareStatement(checkSql);
             checkStmt.setString(1, user);
-            if (checkStmt.executeQuery().next()) {
-                return false;
-            }
-
+            if (checkStmt.executeQuery().next()) return false;
             PreparedStatement insertStmt = conn.prepareStatement(insertSql);
             insertStmt.setString(1, user);
             insertStmt.setString(2, pass);
             insertStmt.executeUpdate();
             return true;
-
-        } catch (SQLException e) {
-            System.err.println("Eroare Register: " + e.getMessage());
-            return false;
-        }
+        } catch (SQLException e) { return false; }
     }
 
     public static void loadFollowersFile(File file) throws Exception {
         String content = new String(Files.readAllBytes(file.toPath()));
-        JSONArray arr = new JSONArray(content);
-        currentFollowers.clear();
-        for (int i = 0; i < arr.length(); i++) {
-            currentFollowers.add(arr.getJSONObject(i).getJSONArray("string_list_data").getJSONObject(0).getString("value"));
+        JSONArray arr;
+        if (content.trim().startsWith("{")) {
+            JSONObject obj = new JSONObject(content);
+            if (obj.has("relationships_followers")) arr = obj.getJSONArray("relationships_followers");
+            else arr = obj.getJSONArray("followers");
+        } else {
+            arr = new JSONArray(content);
         }
+        currentFollowers.clear();
+        currentFollowers.addAll(extractNames(arr));
     }
 
     public static void loadFollowingFile(File file) throws Exception {
         String content = new String(Files.readAllBytes(file.toPath()));
-        JSONObject obj = new JSONObject(content);
-        JSONArray arr = obj.getJSONArray("relationships_following");
-        currentFollowing.clear();
-        for (int i = 0; i < arr.length(); i++) {
-            currentFollowing.add(arr.getJSONObject(i).getString("title"));
+        String trimmed = content.trim();
+
+        JSONArray arr;
+
+        if (trimmed.startsWith("{")) {
+            JSONObject obj = new JSONObject(trimmed);
+            if (obj.has("relationships_following")) {
+                arr = obj.getJSONArray("relationships_following");
+            } else if (obj.has("following")) {
+                arr = obj.getJSONArray("following");
+            } else {
+                throw new RuntimeException(
+                        "Nu am găsit nici 'relationships_following' nici 'following' în JSON-ul de following."
+                );
+            }
+        } else {
+            arr = new JSONArray(trimmed);
         }
+
+        currentFollowing.clear();
+        currentFollowing.addAll(extractNames(arr));
     }
+
+
+    public static Set<String> extractNames(JSONArray array) {
+        Set<String> names = new HashSet<>();
+
+        for (int i = 0; i < array.length(); i++) {
+            try {
+                JSONObject item = array.getJSONObject(i);
+                String name = null;
+                if (item.has("string_list_data")) {
+                    JSONObject first = item.getJSONArray("string_list_data").getJSONObject(0);
+
+                    if (first.has("value")) {
+                        name = first.getString("value");
+                    }
+                    else if (first.has("href")) {
+                        String href = first.getString("href");
+                        int lastSlash = href.lastIndexOf('/');
+                        if (lastSlash != -1 && lastSlash + 1 < href.length()) {
+                            name = href.substring(lastSlash + 1);
+                        }
+                    }
+                }
+
+                if (name == null && item.has("title")) {
+                    name = item.getString("title");
+                }
+
+                if (name == null && item.has("value")) {
+                    name = item.getString("value");
+                }
+
+                if (name != null && !name.isBlank()) {
+                    names.add(name);
+                }
+
+            } catch (Exception e) {
+            }
+        }
+
+        return names;
+    }
+
 }
